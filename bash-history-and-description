@@ -156,3 +156,46 @@ gcloud storage buckets add-iam-policy-binding gs://case-study-1-508412-raw-landi
 2a. gcloud projects add-iam-policy-binding case-study-1-508412 \
   --member="serviceAccount:fetch-zdroj-4@case-study-1-508412.iam.gserviceaccount.com" \
   --role="roles/bigquery.readSessionUser"
+
+# LOADING cd ../loading_to_bq
+
+# same location of BQ dataset (bronze layer) and GCS bucket (data stored in EU (GDPR) and load_table_from_ui will be faster, cheaper, compliance!)
+1. bq mk --dataset --location=europe-west3 case-study-1-508412:bronze
+
+1a. verification (just to be sure)
+
+gcloud storage buckets describe gs://case-study-1-508412-raw-landing --format="value(location)" --> europe-west3
+bq show --format=prettyjson case-study-1-508412:bronze | grep -i location --> europe-west3
+
+
+2. gcloud iam service-accounts create raw-data-loader \
+  --display-name="Raw data loader (Bronze layer) job SA"
+
+gcloud storage buckets add-iam-policy-binding gs://case-study-1-508412-raw-landing \
+  --member="serviceAccount:raw-data-loader@case-study-1-508412.iam.gserviceaccount.com" \
+  --role="roles/storage.objectViewer"
+
+gcloud projects add-iam-policy-binding case-study-1-508412 \
+  --member="serviceAccount:raw-data-loader@case-study-1-508412.iam.gserviceaccount.com" \
+  --role="roles/bigquery.dataEditor"
+
+gcloud projects add-iam-policy-binding case-study-1-508412 \
+  --member="serviceAccount:raw-data-loader@case-study-1-508412.iam.gserviceaccount.com" \
+  --role="roles/bigquery.jobUser"
+
+3. gcloud builds submit --tag europe-west3-docker.pkg.dev/case-study-1-508412/case-study-1-ar/raw-data-loader
+
+4. gcloud run jobs create raw-data-loader-job \
+  --image europe-west3-docker.pkg.dev/case-study-1-508412/case-study-1-ar/raw-data-loader \
+  --region europe-west3 \
+  --service-account raw-data-loader@case-study-1-508412.iam.gserviceaccount.com \
+  --set-env-vars PROJECT_ID=case-study-1-508412,BUCKET_NAME=case-study-1-508412-raw-landing,BQ_DATASET=bronze \
+  --tasks 1 \
+  --max-retries 1
+
+5. gcloud run jobs execute raw-data-loader-job --region europe-west3
+
+# 6. little debugging gcloud logging read \
+# >   'resource.type="cloud_run_job" AND resource.labels.job_name="raw-data-loader-job" AND labels."run.googleapis.com/execution_name"="raw-data-loader-job-6x8xz"' \
+# >   --limit 50 \
+# >   --format="table(timestamp, severity, textPayload)
