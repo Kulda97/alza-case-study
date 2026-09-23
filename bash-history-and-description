@@ -1,0 +1,158 @@
+1. cd ../alza/alza-case-study
+2. source .venv/bin/activate
+
+# Unfortunately I had to use my old Google Account for free GCP credits :D
+
+3. gcloud auth login
+
+# add a list of services used
+
+4. gcloud services enable .. 
+5. gcloud artifacts repositories create case-study-1-ar \
+  --repository-format=docker \
+  --location=europe-west3
+
+## Secret Manager and the first secret (SAS token) for alza data
+
+6. gcloud services enable secretmanager.googleapis.com
+
+7. printf '%s' 'https://stalzadfcase.blob.core.windows.net/sales-data/bikes_data.alza?sp=rl&st=2026-08-05T12:52:30Z&se=2026-12-31T22:59:59Z&spr=https&sv=2026-02-06&sr=c&sig=8sRLvlJ34s9o%2Fnr5%2BKbxUFtWwhaYc7haOWyXf43uJhs%3D' | \
+gcloud secrets create bikes-source-url --data-file=-
+
+8. gcloud storage buckets create gs://case-study-1-508412-raw-landing \
+  --location=europe-west3
+
+9. gcloud iam service-accounts create fetch-zdroj-1 \
+  --display-name="Fetch zdroj 1 job SA"
+
+# access to the Secret (URL / SAS token)
+gcloud secrets add-iam-policy-binding bikes-source-url \
+  --member="serviceAccount:fetch-zdroj-1@case-study-1-508412.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+
+# access to the Bucket
+gcloud storage buckets add-iam-policy-binding gs://case-study-1-508412-raw-landing \
+  --member="serviceAccount:fetch-zdroj-1@case-study-1-508412.iam.gserviceaccount.com" \
+  --role="roles/storage.objectAdmin"
+
+# image build and push to AR
+
+10. gcloud builds submit --tag europe-west3-docker.pkg.dev/case-study-1-508412/case-study-1-ar/fetch-zdroj-1
+
+## alternatively, locally docker build -t europe-west3-docker.pkg.dev/case-study-1-508412/case-study-1-ar/fetch-zdroj-1 .
+## docker push europe-west3-docker.pkg.dev/case-study-1-508412/case-study-1-ar/fetch-zdroj-1
+
+# creating the Cloud Run Job for fetch-zdroj-1 .. --tasks 1 (one instance), --max-retries 1 (after the first failure it will try one more time 
+
+11. gcloud run jobs create fetch-zdroj-1-job \
+  --image europe-west3-docker.pkg.dev/case-study-1-508412/case-study-1-ar/fetch-zdroj-1 \
+  --region europe-west3 \
+  --service-account fetch-zdroj-1@case-study-1-508412.iam.gserviceaccount.com \
+  --set-secrets SOURCE_URL=bikes-source-url:latest \
+  --set-env-vars BUCKET_NAME=case-study-1-508412-raw-landing \
+  --tasks 1 \
+  --max-retries 1
+
+12. gcloud run jobs execute fetch-zdroj-1-job --region europe-west3
+
+
+# ZDROJ 2 -- podobný postup
+
+
+1. 
+gcloud iam service-accounts create fetch-zdroj-2 \
+  --display-name="Fetch zdroj 2 job SA"
+
+gcloud storage buckets add-iam-policy-binding gs://case-study-1-508412-raw-landing \
+  --member="serviceAccount:fetch-zdroj-2@case-study-1-508412.iam.gserviceaccount.com" \
+  --role="roles/storage.objectAdmin"
+
+2. gcloud builds submit --tag europe-west3-docker.pkg.dev/case-study-1-508412/case-study-1-ar/fetch-zdroj-2
+
+3. gcloud run jobs create fetch-zdroj-2-job \
+  --image europe-west3-docker.pkg.dev/case-study-1-508412/case-study-1-ar/fetch-zdroj-2 \
+  --region europe-west3 \
+  --service-account fetch-zdroj-2@case-study-1-508412.iam.gserviceaccount.com \
+  --set-env-vars BUCKET_NAME=case-study-1-508412-raw-landing \
+  --tasks 1 \
+  --max-retries 1
+
+4. gcloud run jobs execute fetch-zdroj-2-job --region europe-west3
+
+
+# ZDROJ 3 -- podobný postup opět
+
+## Virtual Crossing API klíč 
+
+1. printf '%s' '2ZDAKHVM2HEX45CG4UXCM3HHJ' | \
+gcloud secrets create visual-crossing-api-key --data-file=-
+
+2. gcloud iam service-accounts create fetch-zdroj-3 \
+  --display-name="Fetch zdroj 3 job SA"
+
+gcloud secrets add-iam-policy-binding visual-crossing-api-key \
+  --member="serviceAccount:fetch-zdroj-3@case-study-1-508412.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+
+gcloud storage buckets add-iam-policy-binding gs://case-study-1-508412-raw-landing \
+  --member="serviceAccount:fetch-zdroj-3@case-study-1-508412.iam.gserviceaccount.com" \
+  --role="roles/storage.objectAdmin"
+
+
+3. gcloud builds submit --tag europe-west3-docker.pkg.dev/case-study-1-508412/case-study-1-ar/fetch-zdroj-3
+
+4. gcloud run jobs create fetch-zdroj-3-job \
+  --image europe-west3-docker.pkg.dev/case-study-1-508412/case-study-1-ar/fetch-zdroj-3 \
+  --region europe-west3 \
+  --service-account fetch-zdroj-3@case-study-1-508412.iam.gserviceaccount.com \
+  --set-secrets VISUAL_CROSSING_API_KEY=visual-crossing-api-key:latest \
+  --set-env-vars BUCKET_NAME=case-study-1-508412-raw-landing \
+  --tasks 1 \
+  --max-retries 1
+
+5. gcloud run jobs execute fetch-zdroj-3-job --region europe-west3
+
+# ZDROJ 4 
+
+1. gcloud services enable bigquery.googleapis.com
+
+2. gcloud iam service-accounts create fetch-zdroj-4 \
+  --display-name="Fetch zdroj 4 job SA"
+
+gcloud projects add-iam-policy-binding case-study-1-508412 \
+  --member="serviceAccount:fetch-zdroj-4@case-study-1-508412.iam.gserviceaccount.com" \
+  --role="roles/bigquery.jobUser"
+
+gcloud storage buckets add-iam-policy-binding gs://case-study-1-508412-raw-landing \
+  --member="serviceAccount:fetch-zdroj-4@case-study-1-508412.iam.gserviceaccount.com" \
+  --role="roles/storage.objectAdmin"
+
+3. gcloud builds submit --tag europe-west3-docker.pkg.dev/case-study-1-508412/case-study-1-ar/fetch-zdroj-4
+
+4. gcloud run jobs create fetch-zdroj-4-job \
+  --image europe-west3-docker.pkg.dev/case-study-1-508412/case-study-1-ar/fetch-zdroj-4 \
+  --region europe-west3 \
+  --service-account fetch-zdroj-4@case-study-1-508412.iam.gserviceaccount.com \
+  --set-env-vars BUCKET_NAME=case-study-1-508412-raw-landing \
+  --tasks 1 \
+  --max-retries 1 \
+  --memory 1Gi
+
+5. gcloud run jobs execute fetch-zdroj-4-job --region europe-west3
+
+
+## In logs we can see textPayload: "Container terminated on signal 9." textPayload: "Out-of-memory event detected in container" SIGKILL (probably OOM in Cloud Run)
+# optimization 1: uv pip install google-cloud-bigquery-storage -> to_dataframe() method will use the BQ Storage API instead of REST
+# optimization 2: dont use Cloud Run Job at all and instead load the load directly to BQ during Transform step
+# optimization 3: use more memory and cpu
+
+4a. gcloud run jobs update fetch-zdroj-4-job \
+  --region europe-west3 \
+  --memory 4Gi \
+  --cpu 2
+
+3a. gcloud builds submit --tag europe-west3-docker.pkg.dev/case-study-1-508412/case-study-1-ar/fetch-zdroj-4 #(again)
+
+2a. gcloud projects add-iam-policy-binding case-study-1-508412 \
+  --member="serviceAccount:fetch-zdroj-4@case-study-1-508412.iam.gserviceaccount.com" \
+  --role="roles/bigquery.readSessionUser"
