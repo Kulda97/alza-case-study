@@ -199,3 +199,9 @@ gcloud projects add-iam-policy-binding case-study-1-508412 \
 # >   'resource.type="cloud_run_job" AND resource.labels.job_name="raw-data-loader-job" AND labels."run.googleapis.com/execution_name"="raw-data-loader-job-6x8xz"' \
 # >   --limit 50 \
 # >   --format="table(timestamp, severity, textPayload)
+
+# SILVER and GOLD Layer
+
+bq mk --dataset --location=europe-west3 case-study-1-508412:silver
+
+bq mk --dataset --location=europe-west3 case-study-1-508412:gold
