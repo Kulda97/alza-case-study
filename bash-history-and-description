@@ -16,7 +16,7 @@
 
 6. gcloud services enable secretmanager.googleapis.com
 
-7. printf '%s' 'https://stalzadfcase.blob.core.windows.net/sales-data/bikes_data.alza?sp=rl&st=2026-08-05T12:52:30Z&se=2026-12-31T22:59:59Z&spr=https&sv=2026-02-06&sr=c&sig=8sRLvlJ34s9o%2Fnr5%2BKbxUFtWwhaYc7haOWyXf43uJhs%3D' | \
+7. printf '%s' '{SAStoken}' | \
 gcloud secrets create bikes-source-url --data-file=-
 
 8. gcloud storage buckets create gs://case-study-1-508412-raw-landing \
